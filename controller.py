@@ -3,15 +3,8 @@ from cobar_miniproject.base_controller import Action, BaseController
 from .utils import get_cpg, step_cpg
 
 class Controller(BaseController):
-    def __init__(
-        self,
-        timestep=1e-4,
-        seed=0,
-        attractive_gain=-10,
-        decision_interval=0.1  # in steps
-    ):
+    def __init__(self, timestep=1e-4, seed=0, decision_interval=0.05, smoothing_factor=0.2):
         from flygym.examples.locomotion import PreprogrammedSteps
-
         super().__init__()
         self.quit = False
         self.cpg_network = get_cpg(timestep=timestep, seed=seed)
@@ -19,23 +12,27 @@ class Controller(BaseController):
         self.step_counter = 0
         self.odor_memory = 0
         self.no_odor_counter = 0
-                
-        # Navigation parameters
-        self.attractive_gain = attractive_gain
-        self.decision_interval = decision_interval 
-        self.last_decision_step = 0  # 统一使用step计数
-        self.current_bias = 0  # [-1, 1] range for turning bias
 
-    def get_actions(self, obs: dict) -> Action:  # 注意obs是dict
-        # Make navigation decisions at fixed intervals
+        # 控制参数
+        self.attractive_gain = -500
+        self.decision_interval = decision_interval
+        self.last_decision_step = 0
+        self.current_bias = 0
+        self.last_bias = 0
+        self.smoothing_factor = smoothing_factor
+
+    def get_actions(self, obs: dict) -> Action:
+        # 决策时机
         if self.step_counter - self.last_decision_step >= self.decision_interval:
             self._update_navigation_decision(obs)
             self.last_decision_step = self.step_counter
-        
-        # Convert navigation bias to CPG modulation
-        left_signal = 1.0 + min(0, self.current_bias) * 1.2
-        right_signal = 1.0 - max(0, self.current_bias) * 1.2
 
+        # 平滑的CPG转向信号
+        bias = np.clip(self.current_bias, -1.0, 1.0)
+        left_signal = 1.0 + 0.8 * np.tanh(min(0, bias))   # 向左转时增强左侧
+        right_signal = 1.0 - 0.8 * np.tanh(max(0, bias))  # 向右转时增强右侧
+
+        # 脚步生成
         joint_angles, adhesion = step_cpg(
             cpg_network=self.cpg_network,
             preprogrammed_steps=self.preprogrammed_steps,
@@ -43,71 +40,34 @@ class Controller(BaseController):
         )
 
         self.step_counter += 1
-        return {
-            "joints": joint_angles,
-            "adhesion": adhesion,
-        }
-    
+        return {"joints": joint_angles, "adhesion": adhesion}
+
     def _update_navigation_decision(self, obs: dict):
+        
         try:
+            odor = obs["odor_intensity"][0]  # 使用第一个气味通道（吸引性）
 
-            odor = obs["odor_intensity"]  # shape: (2, 4)
+            # reshape 为 (2, 2): 左右 x 前后
+            reshaped = odor.reshape(2, 2)
+            weighted_lr = np.average(reshaped, axis=0, weights=[9, 1])  # 左右方向重加权
+            odor_diff = weighted_lr[0] - weighted_lr[1]
+            mean_odor = weighted_lr.mean() + 1e-6
 
-        # 按照方向索引（假设为 [front_left, front_right, back_left, back_right]）
-            left_front = odor[0][0]
-            left_back = odor[0][2]
-            right_front = odor[1][1]
-            right_back = odor[1][3]
+            # 应用导航偏置
+            effective_bias = self.attractive_gain * (odor_diff / mean_odor)
 
-        # X 方向梯度（左 vs 右）
-            left_total = left_front + left_back
-            right_total = right_front + right_back
-            x_gradient = right_total - left_total
+            # tanh平滑 + square增强非线性
+            target_bias = np.tanh(effective_bias ** 2) * np.sign(effective_bias)
 
-        # Y 方向梯度（前 vs 后）
-            front_total = left_front + right_front
-            back_total = left_back + right_back
-            y_gradient = front_total - back_total
-
-            angle = np.arctan2(y_gradient, x_gradient)
-            attr_sum = left_total + right_total + 1e-6
-
-            print("梯度：", x_gradient, y_gradient, "角度：", angle, "总强度：", attr_sum)
-
-        # 控制逻辑（和你之前基本一致）...
-            if abs(angle) < np.pi / 4:
-                self.current_bias = 0.5
-            elif abs(angle - np.pi) < np.pi / 4:
-                self.current_bias = -0.5
-            elif angle > np.pi / 2 or angle < -np.pi / 2:
-                self.current_bias = np.random.choice([-0.8, 0.8])
-            else:
-                self.current_bias = 0.0
-
-            if attr_sum > 0.05:
-                self.current_bias *= 1.5
-
-            if abs(x_gradient) > 1e-2 or abs(y_gradient) > 1e-2:
-                self.odor_memory = np.arctan2(y_gradient, x_gradient)
-
-            if attr_sum < 0.05:
-                self.no_odor_counter += 1
-            else:
-                self.no_odor_counter = 0
+            # 应用平滑
+            self.current_bias = (
+                self.smoothing_factor * target_bias + (1 - self.smoothing_factor) * self.last_bias
+            )
+            self.last_bias = self.current_bias
 
         except Exception as e:
-            print("气味解析错误：", e)
+            print("⚠️ 气味导航决策错误：", e)
             self.current_bias = 0.0
-
-    # 探索策略
-        if self.no_odor_counter > 50:
-            if self.odor_memory != 0:
-                self.current_bias = 0.4 * np.sign(np.sin(self.odor_memory))
-        else:
-            self.current_bias = 0.5 * np.sin(self.step_counter / 100)
-    
-
-       
 
     def done_level(self, obs: dict) -> bool:
         try:
@@ -121,8 +81,7 @@ class Controller(BaseController):
         self.step_counter = 0
         self.last_decision_step = 0
         self.current_bias = 0
-        self.odor_memory = 0           
-        self.no_odor_counter = 0       
-  
+        self.last_bias = 0
+        self.odor_memory = 0
+        self.no_odor_counter = 0
         self.quit = False
-
