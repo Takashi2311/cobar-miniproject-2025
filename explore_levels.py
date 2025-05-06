@@ -3,6 +3,8 @@ import cv2
 import tqdm
 from cobar_miniproject import levels
 from cobar_miniproject.keyboard_controller import KeyBoardController
+from cobar_miniproject.base_controller import Action, BaseController
+from submission.controller import Controller
 from cobar_miniproject.cobar_fly import CobarFly
 from cobar_miniproject.vision import (
     get_fly_vision,
@@ -60,7 +62,7 @@ if __name__ == "__main__":
         arena=level_arena,
     )
 
-    controller = KeyBoardController(timestep=timestep, seed=seed)
+    controller = Controller(timestep=timestep, seed=seed)
 
     # run cpg simulation
     obs, info = sim.reset()

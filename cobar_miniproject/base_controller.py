@@ -79,12 +79,18 @@ class BaseController(ABC):
         return action
 
     @abstractmethod
-    def done_level(self, obs) -> bool:
-        """
-        For level 4 (path integration) - if the fly has returned back home
-        after collecting the odour, return `True` here to stop the simulation.
-        """
-        pass
+    # def done_level(self, obs) -> bool:
+    #     """
+    #     For level 4 (path integration) - if the fly has returned back home
+    #     after collecting the odour, return `True` here to stop the simulation.
+    #     """
+    #     pass
+    def done_level(self, obs):
+        # check if quit is set to true
+        if self.quit:
+            return True
+        # check if the simulation is done
+        return False
 
     @abstractmethod
     def reset(self, **kwargs):
