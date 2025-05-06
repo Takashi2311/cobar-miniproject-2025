@@ -33,6 +33,8 @@ class Controller(BaseController):
             brightness = vision.max(axis=-1)  # shape: (2, 721)
             dark_mask = brightness < self.obj_threshold
             area = dark_mask.sum(axis=1) / 721  # shape: (2,)
+            raw_vision = obs["raw_vision"] # shape: (2, 512, 450, 3)
+            print("raw_vision shape:", raw_vision.shape)
 
             object_in_left = area[0] > self.area_threshold
             object_in_right = area[1] > self.area_threshold
