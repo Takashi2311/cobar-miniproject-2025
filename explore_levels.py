@@ -1,6 +1,7 @@
 import argparse
 import cv2
 import tqdm
+import os
 from cobar_miniproject import levels
 from cobar_miniproject.keyboard_controller import KeyBoardController
 from cobar_miniproject.base_controller import Action, BaseController
@@ -116,4 +117,9 @@ if __name__ == "__main__":
     print("Simulation finished")
 
     # Save video
-    cam.save_video("./outputs/hybrid_controller.mp4", 0)
+    output_dir = f"./outputs/level{level}"
+    os.makedirs(output_dir, exist_ok=True)
+
+    video_path = os.path.join(output_dir, f"seed{seed}.mp4")
+    cam.save_video(video_path, stabilization_time=0)
+    #cam.save_video("./outputs/hybrid_controller.mp4", 0)
