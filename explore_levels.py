@@ -63,12 +63,10 @@ if __name__ == "__main__":
         arena=level_arena,
     )
 
-    controller = Controller(timestep=timestep, seed=seed)
+    controller = Controller(timestep=timestep)
 
     # run cpg simulation
     obs, info = sim.reset()
-    obs_hist = []
-    info_hist = []
 
     # create window
     cv2.namedWindow("Simulation", cv2.WINDOW_NORMAL)
@@ -88,8 +86,6 @@ if __name__ == "__main__":
                     del obs["vision"]
                 if "raw_vision" in obs:
                     del obs["raw_vision"]
-            obs_hist.append(obs)
-            info_hist.append(info)
 
             rendered_img = sim.render()[0]
             if rendered_img is not None:
