@@ -181,8 +181,14 @@ class Controller(BaseController):
 
         return {"joints": joint_angles, "adhesion": adhesion}
 
-    def done_level(self, obs: Observation):
-        return obs.get("reached_odour", False)
+    # def done_level(self, obs: Observation):
+    #     return obs.get("reached_odour", False)
+    def done_level(self, obs):
+        # check if quit is set to true
+        if self.quit:
+            return True
+        # check if the simulation is done
+        return False
 
     def reset(self, **kwargs):
         self.cpg_network.reset()
