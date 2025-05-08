@@ -872,3 +872,113 @@ class FoodToNestArena(HierarchicalArena):
             if np.linalg.norm(self.target_position - fly_pos) < self.to_target_distance:
                 self.state = "returning"
                 self.setup_return_mode(physics)
+                
+class FoodToNestArenaWithoutObstacles(HierarchicalArena):
+    def __init__(
+        self,
+        timestep,
+        fly,
+        target_distance_range=(29, 31),
+        target_angle_range=(-np.pi, np.pi),
+        target_clearance_radius=4,
+        target_marker_size=0.3,
+        target_marker_color=(1, 0.5, 14 / 255, 1),
+        pillar_height=1e-10,
+        pillar_radius=0.3,
+        pillars_minimum_separation=1e6,
+        fly_clearance_radius=4,
+        seed=None,
+        to_target_distance=3.0,
+        ball_radius=1e-10,
+        ball_approach_vel=50,
+        ball_approach_start_radius=20,
+        ball_overshoot_dist=5,
+        looming_lambda=1.0,
+        approach_angles=np.array([np.pi / 4, 3 * np.pi / 4]),
+        **kwargs,
+    ):
+        HierarchicalArena.__init__(
+            self,
+            timestep=timestep,
+            fly=fly,
+            target_distance_range=target_distance_range,
+            target_angle_range=target_angle_range,
+            target_clearance_radius=target_clearance_radius,
+            target_marker_size=target_marker_size,
+            target_marker_color=target_marker_color,
+            pillar_height=pillar_height,
+            pillar_radius=pillar_radius,
+            pillars_minimum_separation=pillars_minimum_separation,
+            fly_clearance_radius=fly_clearance_radius,
+            seed=seed,
+            to_target_distance=to_target_distance,
+            ball_radius=ball_radius,
+            ball_approach_vel=ball_approach_vel,
+            ball_approach_start_radius=ball_approach_start_radius,
+            ball_overshoot_dist=ball_overshoot_dist,
+            looming_lambda=looming_lambda,
+            approach_angles=approach_angles,
+        )
+
+        self.state = "exploration"  # or "returning"
+
+        self.nest_position = np.array([0, 0])
+        # add nest indicator
+        self.nest_marker = self.root_element.worldbody.add(
+            "body",
+            pos=[0, 0, 2],
+        )
+        torus_path = os.path.dirname(__file__) + "/../assets/cone.stl"
+        self.root_element.asset.add(
+            "mesh", name="nest_mesh", file=torus_path, scale=[1, 1, 1]
+        )
+        self.nest_geom = self.nest_marker.add(
+            "geom", name="nest", type="mesh", mesh="nest_mesh", rgba=[0, 1, 0, 0]
+        )
+
+        self.pillar_height = 0
+        
+
+    def pre_visual_render_hook(self, physics):
+        OdorTargetOnlyArena.pre_visual_render_hook(self, physics)
+        physics.bind(self.nest_geom).rgba[3] = 0
+
+    def post_visual_render_hook(self, physics):
+        OdorTargetOnlyArena.post_visual_render_hook(self, physics)
+        physics.bind(self.nest_geom).rgba[3] = 1
+
+    def setup_return_mode(self, physics):
+        physics.bind(self.nest_geom).rgba[3] = 1
+        for geom in self._odor_marker_geoms:
+            physics.bind(geom).rgba[3] = 0
+
+        # move the pillars under the arena and hide them
+        for body in self.obstacle_bodies:
+            physics.bind(body).mocap_pos[2] = -self.pillar_height - 5.0
+            physics.bind(body.find_all("geom")[0]).rgba = np.array([0, 0, 0, 0])
+
+        self.move_ball(physics, 0, 0, self.ball_rest_height)
+        self.make_ball_invisible(physics)
+
+    def setup_exploration_mode(self, physics):
+        physics.bind(self.nest_geom).rgba[3] = 0
+        for geom in self._odor_marker_geoms:
+            physics.bind(geom).rgba[3] = 1
+        for body in self.obstacle_bodies:
+            # physics.bind(body).mocap_pos[2] = self.pillar_height
+            physics.bind(body).mocap_pos[2] = -self.pillar_height - 5.0
+            physics.bind(body.find_all("geom")[0]).rgba = np.array([0, 0, 0, 0])
+    def reset(self, physics, seed=None):
+        """Reset the environment and optionally reseed."""
+        
+        HierarchicalArena.reset(self, physics, seed)
+        self.state = "exploration"
+        self.setup_exploration_mode(physics)
+
+    def step(self, dt, physics):
+        fly_pos = physics.bind(self.fly._body_sensors[0]).sensordata[:2].copy()
+        if self.state == "exploration":
+            LoomingBallArena.step_ball(self, dt, physics)
+            if np.linalg.norm(self.target_position - fly_pos) < self.to_target_distance:
+                self.state = "returning"
+                self.setup_return_mode(physics)

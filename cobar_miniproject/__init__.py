@@ -4,6 +4,7 @@ from .arenas import (
     LoomingBallArena,
     HierarchicalArena,
     FoodToNestArena,
+    FoodToNestArenaWithoutObstacles,
 )
 
 __all__ = ["BaseController"]
@@ -13,4 +14,5 @@ levels = {
     2: LoomingBallArena,
     3: HierarchicalArena,
     4: FoodToNestArena,
+    5: FoodToNestArenaWithoutObstacles,
 }

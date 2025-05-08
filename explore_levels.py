@@ -4,7 +4,6 @@ import tqdm
 import os
 from cobar_miniproject import levels
 from cobar_miniproject.keyboard_controller import KeyBoardController
-from cobar_miniproject.base_controller import Action, BaseController
 from submission.controller import Controller
 from cobar_miniproject.cobar_fly import CobarFly
 from cobar_miniproject.vision import (
@@ -21,7 +20,7 @@ ONLY_CAMERA = 0
 WITH_FLY_VISION = 1
 WITH_RAW_VISION = 2
 
-VISUALISATION_MODE = WITH_FLY_VISION
+VISUALISATION_MODE = WITH_RAW_VISION
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the fly simulation.")
@@ -63,11 +62,10 @@ if __name__ == "__main__":
         arena=level_arena,
     )
 
-    controller = Controller(timestep=timestep)
+    controller = Controller(timestep=timestep, seed=seed)
 
     # run cpg simulation
     obs, info = sim.reset()
-
     # create window
     cv2.namedWindow("Simulation", cv2.WINDOW_NORMAL)
 
@@ -78,6 +76,7 @@ if __name__ == "__main__":
                 controller.get_actions(obs)
             )
             if controller.done_level(obs):
+                print("Simulation terminated by user.")
                 # finish the path integration level
                 break
 
@@ -113,9 +112,4 @@ if __name__ == "__main__":
     print("Simulation finished")
 
     # Save video
-    output_dir = f"./outputs/level{level}"
-    os.makedirs(output_dir, exist_ok=True)
-
-    video_path = os.path.join(output_dir, f"seed{seed}.mp4")
-    cam.save_video(video_path, stabilization_time=0)
-    #cam.save_video("./outputs/hybrid_controller.mp4", 0)
+    cam.save_video("./outputs/hybrid_controller.mp4", 0)
