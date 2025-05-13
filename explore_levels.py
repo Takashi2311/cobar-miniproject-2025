@@ -38,7 +38,7 @@ if __name__ == "__main__":
     timestep = 1e-4
 
     # you can pass in parameters to enable different senses here
-    fly = CobarFly(debug=False, enable_vision=True, render_raw_vision=False)
+    fly = CobarFly(debug=False, enable_vision=True, render_raw_vision=True)
 
     if level <= -1:
         level_arena = FlatTerrain()
@@ -81,11 +81,11 @@ if __name__ == "__main__":
                 # finish the path integration level
                 break
 
-            if not obs["vision_updated"]:
-                if "vision" in obs:
-                    del obs["vision"]
-                if "raw_vision" in obs:
-                    del obs["raw_vision"]
+            # if not obs["vision_updated"]:
+            #     if "vision" in obs:
+            #         del obs["vision"]
+            #     if "raw_vision" in obs:
+            #         del obs["raw_vision"]
 
             rendered_img = sim.render()[0]
             if rendered_img is not None:
