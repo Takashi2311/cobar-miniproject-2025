@@ -14,7 +14,7 @@ class Controller(BaseController):
         self.preprogrammed_steps = PreprogrammedSteps()
 
         # ADDED BY DAVID
-        self.decision_interval = 0.00525  # seconds
+        self.decision_interval = 0.0525  # seconds
         self.steps_per_decision = int(self.decision_interval / self.timestep)
         self.step_counter = 0
         
@@ -35,6 +35,13 @@ class Controller(BaseController):
         # Vision system
         self.retina = Retina()
         self.coms = self.compute_ommatidia_centers()
+        
+        # ADDED BY TAKASHI
+        self.returning = False
+        self.velocity_hist = []
+        self.position = np.zeros(2)
+        self.theta = 0.0
+        self.count = 0
         
     def compute_ommatidia_centers(self):
         coms = np.empty((self.retina.num_ommatidia_per_eye, 2))
@@ -95,41 +102,114 @@ class Controller(BaseController):
                     steer[1] -= correction
         return steer
     
+    # METHODS FOR LEVEL 4
+    
+    def set_returning(self, flag: bool):
+        self.returning = flag
+        if flag:
+            print("position:", self.position)
+    
+    def integrate_velocity(self, velocity, heading):
+        
+        dt = self.timestep
+        self.position[0] += (velocity[0][0]*np.cos(heading) - velocity[0][1]*np.sin(heading)) * dt
+        self.position[1] += (velocity[0][0]*np.sin(heading) + velocity[0][1]*np.cos(heading)) * dt
+        self.theta = np.arctan2(self.position[1], self.position[0])
+    
+    def compute_nest(self, position, theta, heading):
+        distance_to_nest = np.linalg.norm(position)
+        angle_to_nest = np.pi + theta - (heading + 2*np.pi) % (2 * np.pi)
+        return distance_to_nest, angle_to_nest
+    
+    
     def get_actions(self, obs: Observation) -> Action:
         raw_vision = obs.get("raw_vision", None)
-        object_in_left = False
-        object_in_right = False
-        red_seen = False
-        if raw_vision is not None:
-            RED_THRESHOLD = 0.6
-            GREEN_THRESHOLD = 0.3
-            BLUE_THRESHOLD = 0.3
-            RED_AREA_THRESHOLD = 0.005  # 0.5%
-            for eye in [0, 1]:
-                img = raw_vision[eye]  # (512, 450, 3)
-                red_mask = (
-                    (img[:, :, 0] > RED_THRESHOLD) &
-                    (img[:, :, 1] < GREEN_THRESHOLD) &
-                    (img[:, :, 2] < BLUE_THRESHOLD)
+        velocity = obs.get("velocity", None)
+        heading = obs.get("heading", None)
+        self.integrate_velocity(velocity, heading)
+        print("Position:", self.position)
+        # print("Theta:", self.theta)
+        if self.returning == False:
+            object_in_left = False
+            object_in_right = False
+            red_seen = False
+            if raw_vision is not None:
+                RED_THRESHOLD = 0.6
+                GREEN_THRESHOLD = 0.3
+                BLUE_THRESHOLD = 0.3
+                RED_AREA_THRESHOLD = 0.005  # 0.5%
+                for eye in [0, 1]:
+                    img = raw_vision[eye]  # (512, 450, 3)
+                    red_mask = (
+                        (img[:, :, 0] > RED_THRESHOLD) &
+                        (img[:, :, 1] < GREEN_THRESHOLD) &
+                        (img[:, :, 2] < BLUE_THRESHOLD)
+                    )
+                    area_ratio = np.sum(red_mask) / (img.shape[0] * img.shape[1])
+                    if eye == 0:
+                        object_in_left = area_ratio > RED_AREA_THRESHOLD
+                    else:
+                        object_in_right = area_ratio > RED_AREA_THRESHOLD
+                red_seen = object_in_left or object_in_right
+            if red_seen:
+                print("Red object detected — retreating.")
+                delta_left = self.delta_max
+                delta_right = self.delta_max
+                if object_in_left and not object_in_right:
+                    delta_left *= 0.5
+                elif object_in_right and not object_in_left:
+                    delta_right *= 0.5
+                elif object_in_left and object_in_right:
+                    delta_left *= 0.8
+                    delta_right *= 0.2
+                self.control_signal = -np.array([delta_left, delta_right])
+                self.step_counter += 1
+                joint_angles, adhesion = step_cpg(
+                    cpg_network=self.cpg_network,
+                    preprogrammed_steps=self.preprogrammed_steps,
+                    action=self.control_signal,
                 )
-                area_ratio = np.sum(red_mask) / (img.shape[0] * img.shape[1])
-                if eye == 0:
-                    object_in_left = area_ratio > RED_AREA_THRESHOLD
-                else:
-                    object_in_right = area_ratio > RED_AREA_THRESHOLD
-            red_seen = object_in_left or object_in_right
-        if red_seen:
-            print("Red object detected — retreating.")
-            delta_left = self.delta_max
-            delta_right = self.delta_max
-            if object_in_left and not object_in_right:
-                delta_left *= 0.5
-            elif object_in_right and not object_in_left:
-                delta_right *= 0.5
-            elif object_in_left and object_in_right:
-                delta_left *= 0.8
-                delta_right *= 0.2
-            self.control_signal = -np.array([delta_left, delta_right])
+                return {"joints": joint_angles, "adhesion": adhesion}
+            features = self.process_visual_obs(obs)
+            chemotaxis_signal = self.compute_chemotaxis_signal(obs)
+            avoidance_steer = self.compute_avoidance_steer(features)
+
+            # Combine strategies
+            control_signal = 1.5 * chemotaxis_signal + avoidance_steer
+
+            # Smooth
+            decay = 0.9
+            control_signal = decay * self.prev_control_signal + (1 - decay) * control_signal
+            control_signal = np.clip(control_signal, 0.5, 1.5)
+
+            self.prev_control_signal = control_signal
+            self.step_counter += 1
+
+            joint_angles, adhesion = step_cpg(
+                cpg_network=self.cpg_network,
+                preprogrammed_steps=self.preprogrammed_steps,
+                action=control_signal,
+            )
+            return {"joints": joint_angles, "adhesion": adhesion}  
+        else:
+            distance_to_nest, angle_to_nest = self.compute_nest(self.position, self.theta, heading)  
+            print("angle_to_nest:", angle_to_nest) 
+            # print("heading:", heading)
+            # print("theta:", self.theta)
+            if angle_to_nest > 0:
+                delta_left = self.delta_max - angle_to_nest * (self.delta_max - self.delta_min)
+                delta_right = self.delta_max
+            else:
+                delta_left = self.delta_max
+                delta_right = self.delta_max - abs(angle_to_nest) * (self.delta_max - self.delta_min)               
+                
+            self.control_signal = np.array([delta_left, delta_right])
+            print("Control signal:", self.control_signal)
+            print(distance_to_nest)
+            if distance_to_nest < 2.0:
+                print("Nest reached — stopping.")
+                self.quit = True
+            
             self.step_counter += 1
             joint_angles, adhesion = step_cpg(
                 cpg_network=self.cpg_network,
@@ -137,28 +217,7 @@ class Controller(BaseController):
                 action=self.control_signal,
             )
             return {"joints": joint_angles, "adhesion": adhesion}
-        features = self.process_visual_obs(obs)
-        chemotaxis_signal = self.compute_chemotaxis_signal(obs)
-        avoidance_steer = self.compute_avoidance_steer(features)
-
-        # Combine strategies
-        control_signal = 1.5 * chemotaxis_signal + avoidance_steer
-
-        # Smooth
-        decay = 0.9
-        control_signal = decay * self.prev_control_signal + (1 - decay) * control_signal
-        control_signal = np.clip(control_signal, 0.5, 1.5)
-
-        self.prev_control_signal = control_signal
-        self.step_counter += 1
-
-        joint_angles, adhesion = step_cpg(
-            cpg_network=self.cpg_network,
-            preprogrammed_steps=self.preprogrammed_steps,
-            action=control_signal,
-        )
-
-        return {"joints": joint_angles, "adhesion": adhesion}
+            
 
     # def done_level(self, obs: Observation):
     #     return obs.get("reached_odour", False)

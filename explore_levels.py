@@ -62,7 +62,7 @@ if __name__ == "__main__":
         arena=level_arena,
     )
 
-    controller = Controller(timestep=timestep, seed=seed)
+    controller = KeyBoardController(timestep=timestep, seed=seed)
 
     # run cpg simulation
     obs, info = sim.reset()
@@ -71,10 +71,14 @@ if __name__ == "__main__":
 
     with tqdm.tqdm(desc="running simulation") as progress_bar:
         while True:
+            #controller.set_returning(level_arena.state == "returning")
             # Get observations
             obs, reward, terminated, truncated, info = sim.step(
                 controller.get_actions(obs)
             )
+            #print("velocity:", obs["velocity"])
+            #print("heading:", obs["heading"])
+        
             if controller.done_level(obs):
                 print("Simulation terminated by user.")
                 # finish the path integration level
