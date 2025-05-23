@@ -41,6 +41,17 @@ conda activate flygym
 python check_submission.py <submission_folder>
 ```
 
+## Testing your controller
+
+You can test your controller using the `test_controller.py` script, that will run it on all the levels and a selection of random seeds.
+
+You can also test it with extra random seeds as follows
+
+```bash
+conda activate flygym
+python test_controller.py <submission_folder> --extra-seeds 10,100,22
+```
+
 ## Creating a private copy while keeping track of the changes from the public repository
 1. Clone this repository
 ```sh

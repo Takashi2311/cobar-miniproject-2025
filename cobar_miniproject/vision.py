@@ -7,17 +7,14 @@ def get_fly_vision(fly: Fly):
     assert (
         fly._curr_visual_input is not None
     ), "fly vision isn't enabled. Make sure `enable_vision` is set to True."
-    return 255 - (
-        255
-        * np.hstack(
-            [
-                fly.retina.hex_pxls_to_human_readable(
-                    fly._curr_visual_input[eye], True
-                ).max(axis=2)[::2, ::2]
-                for eye in range(2)
-            ]
-        )
-    ).astype(np.uint8)
+    return np.hstack(
+        [
+            fly.retina.hex_pxls_to_human_readable(
+                fly._curr_visual_input[eye], True
+            ).max(axis=2)[::2, ::2]
+            for eye in range(2)
+        ]
+    )
 
 
 def get_fly_vision_raw(fly: Fly):
@@ -25,7 +22,7 @@ def get_fly_vision_raw(fly: Fly):
         fly._curr_raw_visual_input is not None
     ), "fly vision isn't enabled. Make sure `render_raw_vision` is set to True."
 
-    return np.hstack(tuple(fly._curr_raw_visual_input))
+    return np.uint8(np.hstack(tuple(fly._curr_raw_visual_input)))
 
 
 def render_image_with_vision(

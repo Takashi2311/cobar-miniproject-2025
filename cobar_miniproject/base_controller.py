@@ -11,7 +11,10 @@ class Observation(TypedDict, total=False):
     - `"contact_forces"` - the contact forces
     - `"heading"` - the fly's absolute heading
     - `"velocity"` - the fly's velocity along x, y, z
-    - `"odor_intensity"` - the odour intensity in each antenna
+    - `"odor_intensity"` - the odour intensities of shape (2, 4). The two rows correspond to the attractive and
+       aversive odour dimensions (note that we do not have aversive odours in the arenas so the corresponding
+       row will be all zeros), and the four columns correspond to the four sensors in the order of (left maxillary
+       palp, right maxillary palp, left antenna, right antenna).
     - `"vision"` - fly-like vision image
     - `"raw_vision"` - raw vision image
     - `"vision_updated"` - whether the fly's vision was updated in the last simulation step
@@ -57,7 +60,7 @@ class BaseController(ABC):
             - `"end_effectors"` - the end effector positions in egocentric coordinates
             - `"contact_forces"` - the contact forces
             - `"heading"` - the fly's absolute heading
-            - `"velocity"` - the fly's velocity along x, y, z
+            - `"velocity"` - the fly's velocity along x, y
             - `"odor_intensity"` - the odour intensity in each antenna
             - `"vision"` - fly-like vision image
             - `"raw_vision"` - raw vision image
