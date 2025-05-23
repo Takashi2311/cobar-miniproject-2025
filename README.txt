@@ -127,3 +127,12 @@ Main control logic that determines motor output based on sensory inputs and inte
   - `action` (`dict`): Dictionary with `"joints"` and `"adhesion"` values for the simulator.
 
 ---
+
+## Usage
+
+To use the `Controller` class, simply import it from `submission/controller.py` in any script or notebook where you wish to use it:
+
+```python
+from submission import Controller
+
+No modifications are required in test_controller.ipynb or test_controller.py. These files are already configured to instantiate and use the controller as designed.
